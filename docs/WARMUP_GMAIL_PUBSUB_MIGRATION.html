@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Warmup Recv: migração IMAP → Gmail Pub/Sub</title>
+<style>
+  :root { --ink:#1c1f26; --muted:#5a6473; --accent:#4f46e5; --soft:#f5f6fa; --border:#e4e6ee; --warn:#b8860b; --bad:#c53030; --good:#10884f; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; color:var(--ink); background:white; line-height:1.55; max-width:880px; margin:0 auto; padding:48px 56px; font-size:14.5px; }
+  h1 { font-size:28px; margin:0 0 6px; border-bottom:4px solid var(--accent); padding-bottom:12px; }
+  h2 { font-size:20px; margin-top:32px; color:var(--accent); border-bottom:1px solid var(--border); padding-bottom:6px; }
+  h3 { font-size:16px; margin-top:22px; }
+  blockquote { margin:14px 0; padding:12px 16px; border-left:4px solid var(--warn); background:var(--soft); color:var(--muted); }
+  code { font-family:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace; background:var(--soft); padding:1px 6px; border-radius:4px; font-size:13px; border:1px solid var(--border); }
+  pre { background:#14171f; color:#e8eaf2; padding:14px 16px; border-radius:8px; overflow-x:auto; font-size:12.5px; line-height:1.55; }
+  pre code { background:transparent; border:none; padding:0; color:inherit; }
+  table { width:100%; border-collapse:collapse; margin:14px 0; font-size:13.5px; }
+  th, td { border:1px solid var(--border); padding:8px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--soft); font-weight:600; }
+  tr:nth-child(even) td { background:#fafbfd; }
+  ul, ol { padding-left:22px; }
+  li { margin:3px 0; }
+  hr { border:none; border-top:1px solid var(--border); margin:32px 0; }
+  .meta { color:var(--muted); font-size:13px; }
+  .step { background:#f7f9ff; border:1px solid #dde3ff; border-radius:8px; padding:14px 18px; margin:12px 0; }
+  .step h3 { margin-top:0; color:var(--accent); }
+  .warn { background:#fff7e0; border-left:4px solid var(--warn); padding:10px 14px; border-radius:4px; margin:10px 0; }
+  @page { size:A4; margin:18mm 14mm; }
+  @media print { body { padding:0; max-width:none; } h2,h3,.step,pre,table { page-break-inside: avoid; } a { color:inherit; text-decoration:none; } }
+</style>
+</head>
+<body>
+
+<h1>Warmup Recv: migração IMAP → Gmail Pub/Sub</h1>
+<p class="meta">Documento de futura referência. Gerado em 2026-05-11. Pra gerar PDF: abra no browser → Cmd+P → "Salvar como PDF".</p>
+
+<blockquote><strong>Quando ler isso:</strong> quando o IMAP polling do warmup recv (Onda 3) começar a ficar caro ou lento. Hoje rodamos IMAP por simplicidade, mas Pub/Sub é o caminho correto pra escala (latência ~segundos vs ~1min, ~0 custo de polling).</blockquote>
+
+<h2>TL;DR</h2>
+<table>
+<thead><tr><th></th><th>IMAP (hoje)</th><th>Pub/Sub (futuro)</th></tr></thead>
+<tbody>
+<tr><td><strong>Como funciona</strong></td><td>Backend conecta no Gmail a cada N segundos e procura emails novos</td><td>Gmail empurra notificação HTTP no backend quando chega email</td></tr>
+<tr><td><strong>Latência</strong></td><td>30s a 1min</td><td>~5 segundos</td></tr>
+<tr><td><strong>Custo setup</strong></td><td>Quase zero (só app password)</td><td>Chato: GCP project + topic + subscription + OAuth</td></tr>
+<tr><td><strong>Permissões</strong></td><td>App Password ou OAuth básico</td><td>OAuth com escopo <code>gmail.readonly</code> ou <code>gmail.modify</code></td></tr>
+<tr><td><strong>Quem chama quem</strong></td><td>Backend → Gmail (pull)</td><td>Gmail → Backend (push)</td></tr>
+<tr><td><strong>Falha silenciosa</strong></td><td>Se backend cair, polling para — alertável</td><td>Se backend cair, Gmail re-tenta entrega por 7 dias</td></tr>
+</tbody>
+</table>
+
+<h2>Pré-requisitos antes de migrar</h2>
+<ol>
+<li>3 caixas Gmail do warmup (Abigail / Hanna / Emily) precisam estar dentro de um <strong>Google Workspace</strong> OU ter OAuth de aplicativo configurado.</li>
+<li>Acesso a um projeto <strong>Google Cloud</strong> com billing ativo (Pub/Sub é gratuito até ~10GB/mês, mas exige projeto com billing).</li>
+<li>URL pública estável do backend (<code>BACKEND_PUBLIC_URL</code> configurada).</li>
+<li>Onda 3 (warmup) já rodando estável com IMAP polling por <strong>≥ 2 semanas</strong>.</li>
+</ol>
+
+<h2>Passo a passo completo</h2>
+
+<div class="step">
+<h3>1. Criar projeto Google Cloud e ativar APIs</h3>
+<pre><code>gcloud projects create coldmail-warmup --name="Coldmail Warmup"
+gcloud config set project coldmail-warmup
+gcloud services enable pubsub.googleapis.com
+gcloud services enable gmail.googleapis.com
+gcloud services enable iamcredentials.googleapis.com</code></pre>
+</div>
+
+<div class="step">
+<h3>2. Criar tópico Pub/Sub que o Gmail vai usar</h3>
+<pre><code>gcloud pubsub topics create coldmail-warmup-inbox</code></pre>
+</div>
+
+<div class="step">
+<h3>3. Dar permissão pro Gmail publicar no tópico</h3>
+<pre><code>gcloud pubsub topics add-iam-policy-binding coldmail-warmup-inbox \
+  --member=serviceAccount:gmail-api-push@system.gserviceaccount.com \
+  --role=roles/pubsub.publisher</code></pre>
+<p class="meta"><code>gmail-api-push@system.gserviceaccount.com</code> é a service account oficial do Gmail — já existe, não precisa criar.</p>
+</div>
+
+<div class="step">
+<h3>4. Criar subscription Push apontando pro backend</h3>
+<pre><code>gcloud pubsub subscriptions create coldmail-warmup-inbox-sub \
+  --topic=coldmail-warmup-inbox \
+  --push-endpoint="https://api.coldmail.com/webhooks/gmail-pubsub" \
+  --ack-deadline=60 \
+  --message-retention-duration=7d \
+  --push-auth-service-account=warmup-bot@coldmail-warmup.iam.gserviceaccount.com</code></pre>
+<p class="meta">O <code>--push-auth-service-account</code> faz o Pub/Sub assinar cada push com um JWT do Google. O backend valida esse JWT antes de aceitar (proteção contra spoof).</p>
+</div>
+
+<div class="step">
+<h3>5. OAuth nas 3 contas Gmail (uma vez por conta)</h3>
+<p>Pra cada caixa do warmup:</p>
+<ol>
+<li>Acesse https://console.cloud.google.com/apis/credentials no projeto</li>
+<li>Crie OAuth client ID tipo <strong>Desktop / Other</strong></li>
+<li>Baixe o <code>client_secret.json</code></li>
+<li>No backend, rode <code>pnpm gmail:authorize abigail.parker@gbestcleaning.info</code> (script auxiliar — abre browser, pede consentimento, salva refresh token)</li>
+<li>Repita pras outras 2 caixas</li>
+</ol>
+<p class="meta">O refresh token vai pro Postgres (tabela <code>gmail_oauth_credentials</code>), nunca pro <code>.env</code>.</p>
+</div>
+
+<div class="step">
+<h3>6. Cada caixa Gmail "se inscreve" no tópico (<code>users.watch</code>)</h3>
+<p>A cada <strong>7 dias</strong> (o watch expira), o backend renova:</p>
+<pre><code>POST https://gmail.googleapis.com/gmail/v1/users/{address}/watch
+Authorization: Bearer &lt;oauth_access_token&gt;
+
+{
+  "labelIds": ["INBOX"],
+  "topicName": "projects/coldmail-warmup/topics/coldmail-warmup-inbox"
+}</code></pre>
+<p>Resposta inclui <code>historyId</code> que o backend guarda — é o cursor pra puxar mudanças desde a última notificação.</p>
+</div>
+
+<div class="step">
+<h3>7. Implementar handler no backend</h3>
+<pre><code>// src/modules/warmup/webhooks/gmail-pubsub.controller.ts
+@Public()
+@Post('/webhooks/gmail-pubsub')
+@HttpCode(204)
+async handle(@Req() req, @Body() body: { message: { data: string } }) {
+  // 1. Validar JWT do Google que vem em Authorization
+  await this.validateGoogleJwt(req.headers.authorization);
+
+  // 2. Parse do payload (base64)
+  const payload = JSON.parse(Buffer.from(body.message.data, 'base64').toString());
+  // payload = { emailAddress: "...", historyId: 12345 }
+
+  // 3. Enfileirar processamento async (Pub/Sub dá ack em 60s)
+  await this.warmupQueue.add('gmail.process-notification', {
+    address: payload.emailAddress,
+    historyId: payload.historyId,
+  });
+}</code></pre>
+</div>
+
+<div class="step">
+<h3>8. Processador assíncrono que puxa as mudanças</h3>
+<pre><code>@Processor(WARMUP_QUEUE)
+async process(job: Job&lt;{ address: string; historyId: number }&gt;) {
+  const lastHistoryId = await this.gmailRepo.getLastHistoryId(job.data.address);
+
+  const { history } = await gmail.users.history.list({
+    userId: job.data.address,
+    startHistoryId: lastHistoryId,
+    historyTypes: ['messageAdded'],
+  });
+
+  for (const item of history ?? []) {
+    for (const msg of item.messagesAdded ?? []) {
+      await this.applyWarmupReply(job.data.address, msg.message);
+    }
+  }
+
+  await this.gmailRepo.setLastHistoryId(job.data.address, job.data.historyId);
+}</code></pre>
+</div>
+
+<div class="step">
+<h3>9. Cron de renovação do <code>users.watch</code></h3>
+<pre><code>@Cron(CronExpression.EVERY_DAY_AT_3AM)
+async renewWatches() {
+  for (const account of await this.gmailRepo.list()) {
+    await this.refreshWatch(account);
+  }
+}</code></pre>
+<p>Gmail watch expira em <strong>7 dias</strong>. Rodar diariamente é seguro com folga.</p>
+</div>
+
+<div class="step">
+<h3>10. Schema novo necessário</h3>
+<pre><code>CREATE TABLE gmail_oauth_credentials (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  email_address   text NOT NULL,
+  refresh_token   text NOT NULL,        -- encrypted at rest (pgcrypto)
+  scope           text NOT NULL,
+  last_history_id bigint,
+  watch_expires_at timestamptz,
+  created_at      timestamptz DEFAULT now(),
+  updated_at      timestamptz DEFAULT now(),
+  UNIQUE (user_id, email_address)
+);
+
+ALTER TABLE gmail_oauth_credentials ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "tenant isolation" ON gmail_oauth_credentials
+  USING ((SELECT auth.uid()) = user_id);</code></pre>
+</div>
+
+<div class="step">
+<h3>11. Cutover seguro</h3>
+<ol>
+<li>Deploy do backend com <strong>dois</strong> consumers ativos: IMAP polling continua (<code>ENABLE_IMAP_WARMUP=true</code>) E Pub/Sub handler novo ativo (<code>ENABLE_PUBSUB_WARMUP=true</code>).</li>
+<li><strong>Idempotency</strong>: cada <code>message_id</code> que chega é checado contra <code>email_warmup_interactions</code>. Duplicidades ignoradas.</li>
+<li>Verificar 3 dias que ambos consumers produzem o mesmo número de <code>interaction_type='reply'</code>/dia.</li>
+<li>Desligar IMAP: <code>ENABLE_IMAP_WARMUP=false</code> no Railway.</li>
+<li>Após 7 dias estável, <strong>remover o código IMAP</strong> do repo.</li>
+</ol>
+</div>
+
+<h2>Gotchas conhecidos</h2>
+
+<div class="warn"><strong>1. Gmail watch só notifica por LABEL.</strong> Se marcar <code>labelIds: ["INBOX"]</code>, replies que caem em "Spam" não geram notificação. Pra warmup, considerar <code>["INBOX", "SPAM"]</code>.</div>
+
+<div class="warn"><strong>2. Pub/Sub deduplica em 10 minutos</strong>, mas <strong>não em janelas maiores</strong>. Sempre idempotente no consumer.</div>
+
+<div class="warn"><strong>3. <code>ack-deadline=60s</code></strong>: se backend não responder em 60s, Pub/Sub re-entrega. Por isso o handler <strong>só enfileira</strong> e responde 204 imediato. O trabalho real é no worker.</div>
+
+<div class="warn"><strong>4. OAuth refresh tokens podem ser revogados sem aviso</strong> (senha mudada, login novo device). Backend precisa detectar 401 do Gmail API e marcar credencial como <code>revoked</code> pra alertar o user.</div>
+
+<div class="warn"><strong>5. Quota Gmail API</strong>: 1 bilhão de quota units/dia por projeto. <code>users.history.list</code> custa 2 unidades. Mesmo com 100 caixas × 100 emails/dia = 20K unidades — trivial.</div>
+
+<div class="warn"><strong>6. Custo Pub/Sub</strong>: $40/TB. Cada notificação ~200 bytes. 100K msgs/dia × 100 caixas/ano = ~$0.30/ano. <strong>Pode esquecer do custo.</strong></div>
+
+<h2>Checklist final antes de cutover</h2>
+<ul>
+<li>☐ GCP project criado com billing ativo</li>
+<li>☐ Pub/Sub topic + subscription provisionados</li>
+<li>☐ OAuth <code>client_secret.json</code> salvo em <code>gmail_oauth_credentials</code> pra cada caixa</li>
+<li>☐ Endpoint <code>/webhooks/gmail-pubsub</code> valida JWT do Google</li>
+<li>☐ Worker <code>gmail.process-notification</code> implementado e testado em sandbox</li>
+<li>☐ Cron <code>renewWatches</code> rodando diariamente</li>
+<li>☐ Idempotency by <code>message_id</code> confirmada em testes</li>
+<li>☐ Métricas Prometheus: <code>gmail_pubsub_received_total</code>, <code>gmail_watch_renewal_failures_total</code></li>
+<li>☐ Alert Sentry pra 401 do Gmail API (credencial revogada)</li>
+<li>☐ 3 dias rodando lado a lado com IMAP polling, números batem</li>
+<li>☐ Desligar IMAP</li>
+</ul>
+
+<h2>Referências</h2>
+<ul>
+<li>https://developers.google.com/gmail/api/guides/push</li>
+<li>https://cloud.google.com/pubsub/docs/push</li>
+<li>https://cloud.google.com/pubsub/docs/authenticate-push-subscriptions</li>
+</ul>
+
+</body>
+</html>

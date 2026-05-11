@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# MCP server config (contains secrets)
+.mcp.json
+
+# Redis local snapshots
+*.rdb
+*.aof

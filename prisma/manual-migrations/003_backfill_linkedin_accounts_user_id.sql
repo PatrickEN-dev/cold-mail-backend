@@ -1,0 +1,15 @@
+-- Backfill manual das 2 linhas legacy de public.linkedin_accounts cujo
+-- user_id ficou NULL após a migration `add_user_id_to_linkedin_accounts`.
+--
+-- Como executar:
+--   1. SELECT id, client_id, account_id FROM public.linkedin_accounts WHERE user_id IS NULL;
+--   2. Pra cada row, identifique manualmente qual user em auth.users é o dono
+--      (cruzar com o front Next, com client_id, ou com quem connectou via Unipile).
+--   3. Substitua os placeholders abaixo pelos UUIDs reais e rode.
+--
+-- Depois do backfill, considere tornar a coluna NOT NULL:
+--   ALTER TABLE public.linkedin_accounts ALTER COLUMN user_id SET NOT NULL;
+-- ATENÇÃO: rodar SET NOT NULL com qualquer row ainda NULL vai falhar.
+
+-- UPDATE public.linkedin_accounts SET user_id = '<UUID-DO-USER-DONO>' WHERE id = '<UUID-DA-ROW-1>';
+-- UPDATE public.linkedin_accounts SET user_id = '<UUID-DO-USER-DONO>' WHERE id = '<UUID-DA-ROW-2>';

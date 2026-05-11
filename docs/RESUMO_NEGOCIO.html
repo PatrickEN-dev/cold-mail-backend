@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cold Email Pro — Resumo do novo Backend</title>
+<style>
+  :root {
+    --ink: #1c1f26;
+    --muted: #5a6473;
+    --accent: #4f46e5;
+    --soft: #f5f6fa;
+    --border: #e4e6ee;
+    --good: #10884f;
+    --warn: #b8860b;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: white;
+    line-height: 1.55;
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 56px;
+    font-size: 15px;
+  }
+  h1 {
+    font-size: 30px;
+    margin: 0 0 6px;
+    border-bottom: 4px solid var(--accent);
+    padding-bottom: 12px;
+  }
+  h2 {
+    font-size: 22px;
+    margin-top: 40px;
+    color: var(--accent);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h3 { font-size: 17px; margin-top: 24px; }
+  p { margin: 10px 0; }
+  blockquote {
+    margin: 18px 0;
+    padding: 14px 18px;
+    border-left: 4px solid var(--accent);
+    background: var(--soft);
+    color: var(--muted);
+    font-style: italic;
+  }
+  blockquote strong { font-style: normal; color: var(--ink); }
+  code {
+    font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--soft);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    border: 1px solid var(--border);
+  }
+  pre {
+    background: #14171f;
+    color: #e8eaf2;
+    padding: 16px 18px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  pre code { background: transparent; border: none; padding: 0; color: inherit; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--soft); font-weight: 600; }
+  tr:nth-child(even) td { background: #fafbfd; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge-ok { background: #e1f4ea; color: var(--good); }
+  .badge-wip { background: #fdf2d7; color: var(--warn); }
+  .badge-stub { background: #f1f1f5; color: var(--muted); }
+  .meta { color: var(--muted); font-size: 13px; }
+  .ascii {
+    background: var(--soft);
+    border: 1px solid var(--border);
+    padding: 14px;
+    border-radius: 8px;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 12px;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  @page { size: A4; margin: 18mm 14mm; }
+  @media print {
+    body { padding: 0; max-width: none; }
+    h2 { page-break-after: avoid; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Cold Email Pro — Resumo do novo Backend</h1>
+<p class="meta">Documento para qualquer pessoa do time entender (1) o que foi feito, (2) como o backend funciona e (3) como ele substitui o N8N. Gerado em 2026-05-10.</p>
+
+<h2>1. Visão geral em 1 parágrafo</h2>
+<p>O Cold Email Pro hoje roda em cima de uma plataforma chamada <strong>N8N</strong>, que orquestra os envios de email, follow-ups, warmup, integrações com LinkedIn, etc. O N8N é bom para protótipos, mas tem problemas sérios quando a operação cresce: <strong>não tem retentativa automática, não avisa quando algo falha, schedules ficam "fantasmas" sem disparar, e os mesmos workflows são compartilhados com outros projetos</strong> — instabilidade em um afeta os outros. A solução é construir um <strong>backend novo em NestJS</strong> que assume essas responsabilidades de forma robusta, observável, escalável e segura — e desligar o N8N gradualmente.</p>
+
+<h2>2. Por que sair do N8N (em fatos)</h2>
+<p>Auditoria feita em 2026-05-09 sobre o sistema real:</p>
+<table>
+<thead><tr><th>Problema</th><th>Evidência</th><th>Impacto</th></tr></thead>
+<tbody>
+<tr><td><strong>5 em 20 envios recentes falharam em silêncio</strong></td><td>Logs <code>pt2</code> no N8N</td><td>Leads perdidos, ninguém soube</td></tr>
+<tr><td><strong>Schedules "ativos" que nunca rodaram</strong></td><td>2 schedules no banco com <code>last_run_at: NULL</code> e horário em março/2026</td><td>Cliente cria agendamento, mas ninguém dispara</td></tr>
+<tr><td><strong>10 leads marcados como "responderam"… mas zero conteúdo da resposta gravado</strong></td><td>Tabela <code>emails</code> com <code>response_content</code> vazio</td><td>Impossível fazer chat thread no app</td></tr>
+<tr><td><strong>Warmup rodando em contas Gmail hardcoded</strong> (Abigail / Hanna / Emily)</td><td>Dentro do workflow N8N, fora do controle do produto</td><td>Cliente novo não consegue ligar warmup nele mesmo</td></tr>
+<tr><td><strong>6 API keys vazadas em texto plano</strong> no N8N (Resend, Zapmail, Unipile, RapidAPI, Brevo, SmartLead)</td><td>Sticky notes / headers HTTP</td><td>Segurança: qualquer um com acesso ao painel rouba</td></tr>
+<tr><td><strong>17 bugs documentados em produção</strong></td><td>Auditoria detalhada — ex: multi-tenant break, anti-spam quebrado, callback sem HMAC</td><td>Riscos legais + funcionais</td></tr>
+</tbody>
+</table>
+<p>Conclusão: <strong>o N8N entregou o MVP, mas escalar com ele é insustentável.</strong></p>
+
+<h2>3. O que é o novo backend (em termos simples)</h2>
+<p>É um <strong>servidor de aplicação</strong> escrito em NestJS — um framework Node.js usado por empresas grandes (Adidas, Roche, Capgemini, etc.). Ele recebe pedidos do front-end Next.js e dos webhooks dos provedores (Resend, SmartLead, Unipile, etc.), e:</p>
+<ul>
+<li><strong>Dispara emails de verdade</strong> chamando o provedor certo (Resend, Zapmail, SES, etc.)</li>
+<li><strong>Agenda envios</strong> com cron próprio (não depende mais do "Wait" do N8N)</li>
+<li><strong>Ouve eventos</strong> dos provedores (entregue, aberto, bounced, replied) e atualiza o banco</li>
+<li><strong>Faz aquecimento de caixa</strong> (warmup) com IA gerando emails naturais</li>
+<li><strong>Faz follow-up automático</strong> de leads que não responderam</li>
+<li><strong>Gerencia LinkedIn</strong> via Unipile (mensagens diretas + convites)</li>
+<li><strong>Tenta de novo automaticamente</strong> quando algo falha (com backoff exponencial)</li>
+<li><strong>Avisa via Sentry</strong> quando algo der errado de verdade</li>
+<li><strong>Loga tudo</strong> com mascaramento de senhas/chaves</li>
+</ul>
+<p>O front Next.js <strong>não muda nada</strong> — ele continua chamando os mesmos endpoints, só que apontando pra URL nova.</p>
+
+<h2>4. Arquitetura em uma figura mental</h2>
+<div class="ascii">       Usuário (front Next.js)
+              │
+              ▼
+       ┌──────────────────┐
+       │  NestJS Backend  │ ◄────── webhooks (Resend, SmartLead, Unipile)
+       │   (este projeto) │
+       └────────┬─────────┘
+                │
+       ┌────────┼─────────────┐
+       ▼        ▼             ▼
+   Postgres   Redis        Provedores
+  (Supabase)  (filas)      (Resend, OpenAI,
+                            Unipile, etc.)</div>
+<p><strong>Postgres (Supabase)</strong> guarda leads, senders, templates, schedules, mensagens.
+<strong>Redis</strong> guarda a fila de jobs (envios pendentes, retentativas, etc.) usando o <strong>BullMQ</strong>.
+<strong>Provedores externos</strong> são quem efetivamente entrega o email / DM / dado de pesquisa.</p>
+
+<h2>5. Como o backend é construído (módulos)</h2>
+<p>O sistema é dividido em <strong>pedaços com responsabilidades claras</strong>:</p>
+<table>
+<thead><tr><th>Módulo</th><th>O que faz</th></tr></thead>
+<tbody>
+<tr><td><strong>Auth</strong></td><td>Verifica que quem chamou tem login válido no Supabase</td></tr>
+<tr><td><strong>Health</strong></td><td>Página <code>/health</code> que mostra se Postgres e Redis estão de pé</td></tr>
+<tr><td><strong>Leads</strong></td><td>CRUD de leads (tabela <code>emails</code>)</td></tr>
+<tr><td><strong>Senders</strong></td><td>CRUD das caixas de envio + cron diário que zera contadores às 00:00</td></tr>
+<tr><td><strong>Templates</strong></td><td>CRUD de templates de email + sorteio aleatório entre variantes</td></tr>
+<tr><td><strong>Schedules</strong></td><td>CRUD de agendamentos + cron que dispara a cada minuto + correção de timezone</td></tr>
+<tr><td><strong>Dispatch</strong></td><td>Núcleo: recebe payload do front, enfileira, despacha um por um, retentando se falhar</td></tr>
+<tr><td><strong>Providers/Email</strong></td><td>7 "estratégias" (Resend, Zapmail, SMTP, SES, Mailgun, Google, Outlook) atrás da mesma interface</td></tr>
+<tr><td><strong>Providers/LinkedIn</strong></td><td>Adapter pra API da Unipile</td></tr>
+<tr><td><strong>Webhooks</strong></td><td>Recebe eventos dos provedores e atualiza o banco (com proteção anti-duplicação)</td></tr>
+<tr><td><strong>Inbox</strong></td><td>Mantém a thread de cada lead (tabela <code>email_messages</code> — nova)</td></tr>
+<tr><td><strong>Warmup</strong></td><td>Aquecimento de caixa, chamando o <code>warmup-budget</code> do Supabase + IA da OpenAI</td></tr>
+<tr><td><strong>Follow-ups</strong></td><td>Cron que segunda-quinta às 12h checa quem não respondeu e manda follow-up</td></tr>
+<tr><td><strong>AI</strong></td><td>Wrapper da OpenAI com prompts prontos pro warmup</td></tr>
+<tr><td><strong>Analytics</strong></td><td>Endpoint que delega pras RPCs Postgres existentes (dashboard do front)</td></tr>
+<tr><td><strong>Search</strong></td><td>Endpoint <code>/search</code> que enriquece leads com Maps + IA + verify-email</td></tr>
+<tr><td><strong>LinkedIn</strong></td><td>Disparo de DM/invite via Unipile + recepção de eventos</td></tr>
+</tbody>
+</table>
+
+<h2>6. Plano de substituição do N8N — 7 ondas</h2>
+<p>A migração segue a estratégia <strong>strangler fig</strong> (figueira-estranguladora): o novo backend cresce ao lado do N8N, vai assumindo workflow por workflow, e quando uma "onda" está estável em produção por 3+ dias, o workflow N8N daquela onda é <strong>desligado</strong>. Nunca há um "big bang" — sempre há rollback fácil.</p>
+<table>
+<thead><tr><th>Onda</th><th>Escopo</th><th>O que entrega</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td><strong>0</strong></td><td>Fundação</td><td>Servidor sobe, autentica, conecta DB e Redis, deploya no Railway</td><td><span class="badge badge-ok">Pronto</span></td></tr>
+<tr><td><strong>1</strong></td><td>Cron "zera limite"</td><td>Substitui o workflow <code>[Tigger] - zera limite</code></td><td><span class="badge badge-ok">Pronto</span></td></tr>
+<tr><td><strong>2</strong></td><td>Webhook de eventos + tabela de mensagens</td><td>Recebe reply/bounce/open de Resend e SmartLead, grava a thread</td><td><span class="badge badge-wip">Parsers ok, falta cutover</span></td></tr>
+<tr><td><strong>3</strong></td><td>Warmup completo (reescrita)</td><td>Aquecimento real plugado nas contas do cliente, com IA + auto-pause</td><td><span class="badge badge-stub">Estrutura pronta</span></td></tr>
+<tr><td><strong>4</strong></td><td>Dispatch (coração do envio)</td><td>Front → backend → entrega via provedor certo, com retry e pacing</td><td><span class="badge badge-wip">Endpoint + worker prontos</span></td></tr>
+<tr><td><strong>5</strong></td><td>Agendamentos</td><td>Cron server-side que dispara schedules na hora certa, respeitando timezone</td><td><span class="badge badge-wip">Cron rodando</span></td></tr>
+<tr><td><strong>6</strong></td><td>Follow-ups + Pesquisa</td><td>Cron de follow-up + endpoint <code>/search</code> (Maps + IA + verify-email)</td><td><span class="badge badge-stub">Stubs no lugar</span></td></tr>
+<tr><td><strong>7</strong></td><td>LinkedIn (Unipile)</td><td>Mensagens DM/invite + ingestão de eventos com multi-tenant correto</td><td><span class="badge badge-stub">Stubs no lugar</span></td></tr>
+</tbody>
+</table>
+<blockquote><strong>Hoje:</strong> ondas 0 e 1 estão funcionais. Ondas 2–7 têm a estrutura, contratos e plumbing prontos. Cada onda subsequente é <strong>incremental</strong> — preenchemos o worker/use case/persistência sem mexer no resto.</blockquote>
+
+<h2>7. Decisões importantes tomadas</h2>
+<table>
+<thead><tr><th>#</th><th>Decisão</th><th>Por quê</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>Prisma como ORM</strong>, não Drizzle</td><td>Pedido explícito do usuário</td></tr>
+<tr><td>2</td><td><strong>Versões mais recentes</strong> de tudo</td><td>Pedido do usuário</td></tr>
+<tr><td>3</td><td><strong>Tenant isolado no warmup</strong></td><td>Hoje há 1 cliente, mas escalar precisa de pool por tenant — pool compartilhado tem trade-offs de reputação</td></tr>
+<tr><td>4</td><td><strong>Edge Function <code>warmup-budget</code> mantida</strong></td><td>Funciona, é determinística — reimplementar seria desperdício</td></tr>
+<tr><td>5</td><td><strong>SmartLead só via webhook</strong></td><td>Saga de criação de campanha estava órfã, foi cortada</td></tr>
+<tr><td>6</td><td><strong>OpenAI direto</strong> (sem LangChain)</td><td>LangChain adiciona peso sem ganho aqui</td></tr>
+<tr><td>7</td><td><strong>Timezone via payload do front</strong></td><td>Multi-tenant futuro pode ter clientes em fusos diferentes</td></tr>
+</tbody>
+</table>
+
+<h2>8. O que ainda falta antes de produção</h2>
+<ol>
+<li><strong>Rotacionar as 6 API keys vazadas</strong> no N8N — antes de qualquer deploy.</li>
+<li><strong>Rodar <code>prisma db pull</code></strong> contra o Postgres de produção pra reconciliar o schema com o estado real.</li>
+<li><strong>Investigar os 5/20 errors do <code>pt2</code></strong> — saber o que está falhando hoje antes de migrar.</li>
+<li><strong>Configurar webhooks no painel</strong> de cada provider apontando pra URL nova (Resend, SmartLead, Unipile).</li>
+<li><strong>Trocar <code>NEXT_PUBLIC_WEBHOOK_N8N</code></strong> no front (Vercel env) pra URL do novo backend — só na onda 4.</li>
+<li><strong>Manter <code>DISPATCH_VIA_N8N=true</code></strong> como feature flag por 7 dias após o cutover, pra rollback rápido.</li>
+</ol>
+
+<h2>9. Riscos endereçados explicitamente</h2>
+<table>
+<thead><tr><th>Risco</th><th>Mitigação</th></tr></thead>
+<tbody>
+<tr><td>Envio cair e perder leads</td><td>Retry automático com backoff exponencial (3 tentativas), DLQ pro Sentry</td></tr>
+<tr><td>Provedor (Resend/Unipile) ficar instável</td><td>Circuit breaker — para de tentar e re-tenta em 30s</td></tr>
+<tr><td>Webhook do provedor entregar 2× o mesmo evento</td><td>Idempotency: índice único em <code>(provider_message_id, direction)</code></td></tr>
+<tr><td>Schedule disparar no horário errado por timezone</td><td><code>ScheduleClock</code> calcula sempre na timezone do usuário</td></tr>
+<tr><td>Token vazar nos logs</td><td>Pino com lista de campos sensíveis para masking automático</td></tr>
+<tr><td>Crash não notificar ninguém</td><td>Sentry capturando 5xx e exceções não-tratadas</td></tr>
+<tr><td>Lead de um cliente entrar na rede de warmup de outro</td><td>Pareamento é tenant-scoped (decisão #16)</td></tr>
+</tbody>
+</table>
+
+<h2>10. Glossário rápido</h2>
+<table>
+<thead><tr><th>Termo</th><th>Significado</th></tr></thead>
+<tbody>
+<tr><td><strong>NestJS</strong></td><td>Framework Node.js, organizado em módulos</td></tr>
+<tr><td><strong>Fastify</strong></td><td>Servidor HTTP — ~2× mais rápido que Express</td></tr>
+<tr><td><strong>Prisma</strong></td><td>ORM (camada que conversa com o banco) com tipagem automática</td></tr>
+<tr><td><strong>BullMQ</strong></td><td>Sistema de filas em cima do Redis — garante que jobs não se percam</td></tr>
+<tr><td><strong>Redis</strong></td><td>Banco em memória ultra-rápido — guarda a fila de jobs</td></tr>
+<tr><td><strong>Sentry</strong></td><td>Serviço que captura erros e notifica o time</td></tr>
+<tr><td><strong>Pino</strong></td><td>Sistema de logs estruturados em JSON, com mascaramento</td></tr>
+<tr><td><strong>HMAC</strong></td><td>Assinatura matemática — quem não tem o segredo não forja</td></tr>
+<tr><td><strong>Idempotency</strong></td><td>Mesma operação 2× não duplica resultado</td></tr>
+<tr><td><strong>Circuit breaker</strong></td><td>Padrão que "abre o circuito" depois de N falhas</td></tr>
+<tr><td><strong>Strangler fig</strong></td><td>Substituição gradual — novo cresce ao lado do velho</td></tr>
+<tr><td><strong>Cron</strong></td><td>Tarefa que roda em horário fixo</td></tr>
+<tr><td><strong>DLQ</strong></td><td>Fila pra onde vão jobs que falharam todas as retentativas</td></tr>
+<tr><td><strong>Multi-tenant</strong></td><td>Suportar múltiplos clientes isolados no mesmo sistema</td></tr>
+<tr><td><strong>Webhook</strong></td><td>Serviço externo te avisa de eventos — fazem POST na sua API</td></tr>
+</tbody>
+</table>
+
+<h2>11. Em uma frase</h2>
+<blockquote><strong>Estamos trocando uma orquestração frágil e compartilhada (N8N) por um backend dedicado, observável e tolerante a falhas — sem o cliente final perceber, e podendo voltar atrás a qualquer momento.</strong></blockquote>
+
+<hr />
+<p class="meta">Para gerar o PDF: abra este arquivo no Chrome/Safari → Cmd+P → "Salvar como PDF". A folha de estilo já está otimizada para impressão A4.</p>
+
+</body>
+</html>

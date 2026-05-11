@@ -1,0 +1,1 @@
+export const LINKEDIN_PROVIDER = Symbol('LINKEDIN_PROVIDER');

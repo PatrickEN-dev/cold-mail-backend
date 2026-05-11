@@ -1,0 +1,381 @@
+// Cold Email Pro — Prisma schema
+// Aligned with live Supabase Postgres on 2026-05-11 via MCP introspection.
+// All tables in this file (except EmailMessage) exist in prod today.
+// EmailMessage is created by Wave 2 — first Prisma migration of the project.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Enums (locally typed — DB stores them as text + CHECK constraints)
+// ============================================================
+
+enum MessageDirection {
+  outbound
+  inbound
+}
+
+// ============================================================
+// Existing tables (verified against Supabase)
+// ============================================================
+
+/// Central lead/contact entity. ~40 columns in prod.
+model Email {
+  id     String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String? @map("user_id") @db.Uuid
+
+  // Identity
+  email             String
+  leadName          String? @map("lead_name")
+  company           String
+  phone             String?
+  region            String
+  industry          String
+  keywords          String[] @default([])
+  city              String?
+  state             String?
+  address           String?
+  googleMapsUrl     String? @map("google_maps_url")
+  leadCategory      String? @map("lead_category")
+  clientTag         String? @map("client_tag")
+  leadClassification String? @default("cold") @map("lead_classification")  // CHECK: hot|warm|cold
+
+  // Pipeline state
+  status            String? @default("sent")
+  campaignName      String? @default("") @map("campaign_name")
+  notes             String? @default("")
+  clientStep        String? @map("client_step")
+
+  // Reply tracking (text in prod — see brief §16.5 B4)
+  responseContent   String? @default("") @map("response_content")
+  replyWeGot        String? @map("reply_we_got")
+  ourLastReply      String? @map("our_last_reply")
+  timeWeGotReply    String? @map("time_we_got_reply")
+  replyTime         String? @map("reply_time")
+
+  // Dispatch tracking
+  dateSent          DateTime? @map("date_sent") @db.Timestamptz(6)
+  dispatchPlatform  String?   @map("dispatch_platform")
+  senderEmail       String?   @map("sender_email")  // text address, denormalized
+  senderEmailId     String?   @map("sender_email_id") @db.Uuid
+
+  // CC / BCC
+  prospectCcEmail String? @map("prospect_cc_email")
+  ccEmail1        String? @map("cc_email_1")
+  ccEmail2        String? @map("cc_email_2")
+  ccEmail3        String? @map("cc_email_3")
+  bccEmail1       String? @map("bcc_email_1")
+
+  // Deal pipeline
+  dealStatus      String?   @map("deal_status")  // CHECK: open|won|lost
+  dealValue       Decimal?  @map("deal_value") @db.Decimal
+  dealClosedAt    DateTime? @map("deal_closed_at") @db.Timestamptz(6)
+  dealLostReason  String?   @map("deal_lost_reason")
+
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sender       SenderEmail?   @relation(fields: [senderEmailId], references: [id])
+  messages     EmailMessage[]
+  replyAction  ReplyAction?
+
+  @@unique([userId, email], map: "emails_user_id_email_unique")
+  @@index([userId], map: "emails_user_id_idx")
+  @@index([userId, status], map: "emails_user_status_idx")
+  @@index([userId, createdAt(sort: Desc)], map: "emails_user_created_idx")
+  @@index([userId, campaignName], map: "emails_user_campaign_idx")
+  @@index([userId, senderEmailId], map: "emails_user_sender_email_id_idx")
+  @@index([dateSent(sort: Desc)], map: "emails_date_sent_idx")
+  @@index([senderEmailId], map: "emails_sender_email_id_idx")
+  @@index([dispatchPlatform], map: "emails_dispatch_platform_idx")
+  @@map("emails")
+}
+
+/// Sending mailboxes. CHECK on `platform` enforced in DB.
+model SenderEmail {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  emailAddress    String   @map("email_address")
+  displayName     String   @default("") @map("display_name")
+  domain          String   @default("")
+  isDefault       Boolean  @default(false) @map("is_default")
+  provider        String   @default("manual")
+  providerId      String?  @map("provider_id")
+  status          String   @default("active")
+  providerMetadata Json    @default("{}") @map("provider_metadata")
+  lastSyncedAt    DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  platform        String   @default("none")  // CHECK: none|smartlead|resend|zapmail|google|outlook
+  dailyLimit      Int      @default(0) @map("daily_limit")
+  todayUsage      Int?     @map("today_usage")
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  warmup    SenderWarmup?
+  emails    Email[]
+  schedules Schedule[]
+
+  @@unique([userId, emailAddress], map: "sender_emails_user_email_unique")
+  @@index([userId, platform], map: "idx_sender_emails_platform")
+  @@index([userId, dailyLimit], map: "idx_sender_emails_daily_limit")
+  @@index([userId, domain], map: "sender_emails_domain_idx")
+  @@map("sender_emails")
+}
+
+/// Per-user settings (webhooks, default template).
+model Settings {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String?  @unique @map("user_id") @db.Uuid
+  webhookUrl         String?  @default("") @map("webhook_url")
+  emailTemplate      String?  @default("") @map("email_template")
+  linkedinWebhookUrl String?  @map("linkedin_webhook_url")
+  createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("settings")
+}
+
+/// Templates per platform.
+model EmailTemplate {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String
+  description String   @default("")
+  subject     String   @default("")
+  bodyHtml    String   @default("") @map("body_html")
+  platform    String   @default("any")
+  isDefault   Boolean  @default(false) @map("is_default")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, name], map: "email_templates_user_name_unique")
+  @@index([userId, platform], map: "email_templates_platform_idx")
+  @@map("email_templates")
+}
+
+/// Scheduled dispatches.
+model Schedule {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  name           String
+  type           String   // CHECK: one_time|recurring
+  status         String   @default("draft")  // CHECK: active|paused|completed|draft
+  scheduledDate  DateTime? @map("scheduled_date") @db.Date
+  scheduledTime  DateTime  @map("scheduled_time") @db.Time(6)
+  recurringDays  String[]  @default([]) @map("recurring_days")
+  leadSelections Json      @default("[]") @map("lead_selections")
+  totalLeads     Int       @default(0) @map("total_leads")
+  leadsSent      Int       @default(0) @map("leads_sent")
+  nextRunAt      DateTime? @map("next_run_at") @db.Timestamptz(6)
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(6)
+  senderEmailId  String?   @map("sender_email_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // TODO(wave-5): the timezone for next_run_at calculation is implicit today.
+  // Add column `tz text NOT NULL DEFAULT 'America/Sao_Paulo'` via migration.
+
+  sender SenderEmail? @relation(fields: [senderEmailId], references: [id])
+
+  @@index([userId], map: "schedules_user_id_idx")
+  @@index([userId, nextRunAt], map: "schedules_user_next_run_at_idx")
+  @@map("schedules")
+}
+
+/// User profile — auto-created by auth.users trigger.
+model Profile {
+  id          String   @id @db.Uuid
+  fullName    String   @default("") @map("full_name")
+  avatarUrl   String?  @map("avatar_url")
+  phone       String?
+  companyName String?  @map("company_name")
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("profiles")
+}
+
+/// Subscription per user.
+model Subscription {
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                 String   @unique @map("user_id") @db.Uuid
+  plan                   String   @default("starter")  // CHECK: starter|professional
+  billingCycle           String   @default("monthly") @map("billing_cycle")  // CHECK: monthly|yearly
+  status                 String   @default("trialing")  // CHECK: active|trialing|canceled|past_due
+  currentPeriodStart     DateTime? @default(now()) @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd       DateTime? @default(dbgenerated("(now() + interval '7 days')")) @map("current_period_end") @db.Timestamptz(6)
+  cancelAtPeriodEnd      Boolean? @default(false) @map("cancel_at_period_end")
+  externalCustomerId     String?  @map("external_customer_id")
+  externalSubscriptionId String?  @map("external_subscription_id")
+  createdAt              DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("subscriptions")
+}
+
+/// LinkedIn accounts connected via Unipile.
+/// `userId` was added by migration `add_user_id_to_linkedin_accounts`. It is
+/// nullable because legacy rows imported before the column existed have NULL.
+/// Once the frontend starts setting it on new INSERTs and legacy rows are
+/// back-filled, a follow-up migration can SET NOT NULL.
+model LinkedInAccount {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String?   @map("user_id") @db.Uuid
+  clientId        String    @map("client_id")
+  accountId       String    @unique @map("account_id")
+  status          String?
+  dataConnection  DateTime? @default(now()) @map("data_conecction") @db.Timestamptz(6) // typo preserved from prod
+
+  @@index([userId], map: "linkedin_accounts_user_id_idx")
+  @@map("linkedin_accounts")
+}
+
+/// LinkedIn messages + scraped profile (one row per chat).
+/// Bug B16/B17 (brief §16.5): single row holds last reply only; threading impossible.
+model LinkedInMessage {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  accountId         String   @map("account_id")
+  campaignName      String   @default("") @map("campaign_name")
+  chatId            String?  @default("") @map("chat_id")
+  messageId         String?  @default("") @map("message_id")
+  providerId        String?  @default("") @map("provider_id")
+  publicIdentifier  String?  @default("") @map("public_identifier")
+  memberUrn         String?  @default("") @map("member_urn")
+  linkedinUrl       String   @default("") @map("linkedin_url")
+
+  // Profile snapshot
+  firstName         String   @default("") @map("first_name")
+  lastName          String   @default("") @map("last_name")
+  headline          String?  @default("")
+  location          String?  @default("")
+  currentCompany    String   @default("") @map("current_company")
+  currentPosition   String   @default("") @map("current_position")
+  topSkills         String[] @default([]) @map("top_skills")
+  followerCount     Int?     @default(0) @map("follower_count")
+  connectionsCount  Int?     @default(0) @map("connections_count")
+  isPremium         Boolean? @default(false) @map("is_premium")
+  profileSummary    String?  @default("") @map("profile_summary")
+  leadQualityScore  Int?     @default(0) @map("lead_quality_score")
+  profilePictureUrl String?  @default("") @map("profile_picture_url")
+
+  // Conversation
+  messageSent       String   @default("") @map("message_sent")
+  status            String   @default("pending") // CHECK list
+  responseContent   String?  @default("") @map("response_content")
+  responseMessageId String?  @default("") @map("response_message_id")
+  leadClassification String? @default("cold") @map("lead_classification")  // CHECK: hot|warm|cold
+  notes             String?  @default("")
+
+  sentAt      DateTime? @map("sent_at") @db.Timestamptz(6)
+  deliveredAt DateTime? @map("delivered_at") @db.Timestamptz(6)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(6)
+  repliedAt   DateTime? @map("replied_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId], map: "linkedin_messages_user_id_idx")
+  @@map("linkedin_messages")
+}
+
+/// Warmup config per sender (empty in prod — wave 3 reimplementation).
+model SenderWarmup {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String   @map("user_id") @db.Uuid
+  // Effectively unique because (user_id, sender_email_id) is unique AND
+  // each sender_email_id belongs to exactly one user_id.
+  senderEmailId      String   @unique @map("sender_email_id") @db.Uuid
+  enabled            Boolean  @default(false)
+  startVolume        Int      @default(5) @map("start_volume")          // CHECK: > 0
+  incrementPerDay    Int      @default(5) @map("increment_per_day")     // CHECK: >= 0
+  dailyLimit         Int      @default(50) @map("daily_limit")
+  businessDaysOnly   Boolean  @default(true) @map("business_days_only")
+  bounceThresholdPct Decimal? @map("bounce_threshold_pct") @db.Decimal
+  bounceWindowHours  Int      @default(24) @map("bounce_window_hours")  // CHECK: > 0
+  startedAt          DateTime? @map("started_at") @db.Timestamptz(6)
+  pausedAt           DateTime? @map("paused_at") @db.Timestamptz(6)
+  autoPausedAt       DateTime? @map("auto_paused_at") @db.Timestamptz(6)
+  autoPausedReason   String?   @map("auto_paused_reason")
+  toppedOutAt        DateTime? @map("topped_out_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  sender SenderEmail @relation(fields: [senderEmailId], references: [id])
+
+  @@unique([userId, senderEmailId], map: "sender_warmups_user_sender_unique")
+  @@index([userId, enabled], map: "sender_warmups_user_enabled_idx")
+  @@map("sender_warmups")
+}
+
+/// Warmup interactions log. No user_id — RLS via JOIN. Schema simpler than I modeled.
+model EmailWarmupInteraction {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  threadId         String   @map("thread_id")
+  sender           String
+  receiver         String
+  interactionType  String   @map("interaction_type")  // CHECK: sent|reply
+  interactionOrder Int      @map("interaction_order")
+  maxInteractions  Int?     @default(3) @map("max_interactions")
+  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([sender, interactionType], map: "email_warmup_interactions_sender_type_idx")
+  @@map("email_warmup_interactions")
+}
+
+/// Manual override for reply intent + archive. PK is email_id.
+model ReplyAction {
+  emailId        String   @id @map("email_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  intentOverride String?  @map("intent_override")  // CHECK: positive|objection|negative|ooo|unsubscribe|other
+  isArchived     Boolean  @default(false) @map("is_archived")
+  archivedAt     DateTime? @map("archived_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isArchived], map: "reply_actions_user_archived_idx")
+  @@map("reply_actions")
+}
+
+// ============================================================
+// New tables (created by Wave 2 — this Prisma project)
+// ============================================================
+
+/// Chat thread per lead. Created by the first Prisma migration of this repo.
+/// Replaces the abuse of `emails.response_content` / `our_last_reply` (B4 / B12).
+model EmailMessage {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  emailId           String   @map("email_id") @db.Uuid
+
+  threadId          String?  @map("thread_id")
+  providerMessageId String?  @map("provider_message_id")
+  inReplyTo         String?  @map("in_reply_to")
+
+  direction         MessageDirection
+
+  fromAddress       String   @map("from_address")
+  fromName          String?  @map("from_name")
+  toAddress         String   @map("to_address")
+  subject           String?
+  bodyText          String?  @map("body_text")
+  bodyHtml          String?  @map("body_html")
+
+  provider          String?
+  sentAt            DateTime  @map("sent_at") @db.Timestamptz(6)
+  receivedAt        DateTime? @map("received_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  email Email @relation(fields: [emailId], references: [id], onDelete: Cascade)
+
+  @@unique([providerMessageId, direction], name: "email_messages_dedupe")
+  @@index([emailId, createdAt])
+  @@index([userId])
+  @@map("email_messages")
+}
