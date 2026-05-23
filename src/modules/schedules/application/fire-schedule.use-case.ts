@@ -11,9 +11,8 @@ interface LeadSelection {
   name?: string;
 }
 
-/// Wave 5 ↔ Wave 4 bridge: turns a fired schedule into a dispatch batch.
 /// `lead_selections` is a jsonb array stored as `[{ id?, email?, name? }, ...]`
-/// (paridade with the legacy front payload §6.2.1).
+/// (parity with the legacy front payload §6.2.1).
 @Injectable()
 export class FireScheduleUseCase {
   private readonly logger = new Logger(FireScheduleUseCase.name);
@@ -48,7 +47,6 @@ export class FireScheduleUseCase {
       return { enqueued: 0 };
     }
 
-    // Hydrate missing email addresses from emails table when only id is given.
     const hydratedLeads = await Promise.all(
       leads.map(async (lead) => {
         if (lead.email) return { id: lead.id, email: lead.email, name: lead.name };

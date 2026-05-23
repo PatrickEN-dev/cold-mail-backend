@@ -23,7 +23,7 @@ export interface SenderEmailStat {
   opened: number;
 }
 
-/// Wave 6: mirrors the three Supabase RPCs (pipeline_metrics, sender_email_stats,
+/// Mirrors the three Supabase RPCs (pipeline_metrics, sender_email_stats,
 /// user_campaign_names) but receives `user_id` explicitly because the RPCs in
 /// prod rely on `auth.uid()` which is NULL when we connect with the service-role.
 @Injectable()

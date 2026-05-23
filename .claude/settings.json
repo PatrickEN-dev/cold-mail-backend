@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(python3 -c \"import json,sys; data=json.load\\(sys.stdin\\); [print\\(f\\\\\"login={c['login']:30s} type={c['type']:10s} contributions={c['contributions']}\\\\\"\\) for c in data]\")"
+    ]
+  }
+}

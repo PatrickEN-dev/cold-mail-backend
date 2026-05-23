@@ -4,8 +4,7 @@ import { CurrentUser } from '@modules/auth/decorators/current-user.decorator';
 import type { AuthUser } from '@modules/auth/types/auth-user';
 import { searchRequestSchema, type SearchRequestDto } from './dto/search.dto';
 
-/// Wave 6: replaces N8N `nNEGPw9Eb4suATn3` `/search`. Fixes bug B2 by using
-/// the authenticated user's id (not a hardcoded uuid).
+/// Fixes bug B2 by using the authenticated user's id (legacy hardcoded a uuid).
 /// TODO(wave-6): wire RapidAPI geocoding + local-business-data + verify-email
 /// + AI classifier, then persist enriched leads.
 @Controller('search')

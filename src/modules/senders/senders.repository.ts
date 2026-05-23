@@ -39,9 +39,9 @@ export class SendersRepository {
     return this.prisma.senderEmail.delete({ where: { id } });
   }
 
-  /// Wave 1: replaces N8N workflow `[Tigger] - zera limite`.
-  /// Equivalent of: UPDATE sender_emails SET today_usage = 0 WHERE today_usage != 0;
-  /// Does NOT migrate the second UPDATE (max_interactions=0) — that's bug B11.
+  /// Global cron query — intentionally not scoped by userId (legitimate
+  /// multi-tenant exception, see CLAUDE.md). Does NOT zero out
+  /// max_interactions — that legacy second UPDATE is bug B11.
   async resetAllDailyUsage(): Promise<{ count: number }> {
     const result = await this.prisma.senderEmail.updateMany({
       where: { todayUsage: { gt: 0 } },

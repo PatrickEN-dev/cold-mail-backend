@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { SendersRepository } from '../senders.repository';
 
-/// Wave 1: replaces N8N `[Tigger] - zera limite`. Resets today_usage to 0
-/// across all senders. Triggered daily at 00:00 by the cron.
+/// Global tenant-less reset triggered daily at 00:00 by the cron (legitimate
+/// multi-tenant exception, see CLAUDE.md).
 @Injectable()
 export class ResetDailyUsageUseCase {
   private readonly logger = new Logger(ResetDailyUsageUseCase.name);

@@ -31,7 +31,8 @@ export class SchedulesRepository {
     return this.prisma.schedule.delete({ where: { id } });
   }
 
-  /// Wave 5 cron: pick active schedules due for execution.
+  /// Global cron query — intentionally not scoped by userId (legitimate
+  /// multi-tenant exception, see CLAUDE.md).
   findDue(now: Date, limit = 50): Promise<Schedule[]> {
     return this.prisma.schedule.findMany({
       where: { status: 'active', nextRunAt: { lte: now } },

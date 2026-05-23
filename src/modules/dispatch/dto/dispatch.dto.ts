@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { senderPlatforms } from '@modules/senders/dto/sender.dto';
 
-/// Contract from the Next.js front (brief §6.2.1). Wave 4 must accept this
-/// payload verbatim so we can flip NEXT_PUBLIC_WEBHOOK_N8N without front changes.
+/// Contract from the Next.js front (brief §6.2.1) — must be accepted verbatim
+/// so NEXT_PUBLIC_WEBHOOK_N8N can be flipped without front changes.
 export const senderEmailFragmentSchema = z.object({
   id: z.string().uuid(),
   email_address: z.string().email(),
@@ -47,7 +47,6 @@ export const dispatchBatchSchema = z.object({
 });
 export type DispatchBatchDto = z.infer<typeof dispatchBatchSchema>;
 
-/// Internal job payload — what the worker consumes.
 export interface DispatchSendJobData {
   userId: string;
   batchId: string;

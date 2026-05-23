@@ -5,9 +5,6 @@ import { SchedulesRepository } from '../schedules.repository';
 import { ScheduleClock } from '../application/schedule-clock';
 import { FireScheduleUseCase } from '../application/fire-schedule.use-case';
 
-/// Wave 5: replaces N8N pt1 Wait-as-scheduler. Runs every minute and fires
-/// any schedule whose next_run_at has passed, then advances next_run_at
-/// (recurring) or marks completed (one_time).
 @Injectable()
 export class SchedulesTickCron {
   private readonly logger = new Logger(SchedulesTickCron.name);

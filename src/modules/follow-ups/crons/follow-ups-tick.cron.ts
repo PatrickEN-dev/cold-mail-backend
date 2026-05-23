@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TypedConfigService } from '@infra/config/typed-config.service';
 
-/// Wave 6: replaces N8N `0x9tjMCXLxba1LqZ`. Brief §18.1/§18.6 — runs Mon-Thu 12:00.
 /// Bug B5 in legacy: only resend leads got follow-ups. Migration must include
 /// every dispatch_platform.
 /// TODO(wave-6): walk leads with status='sent'/'delivered' past N days without

@@ -4,8 +4,8 @@ const WEEKDAY_INDEX: Record<string, number> = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
 };
 
-/// Computes next_run_at honoring the schedule's IANA timezone (wave 5 fix).
-/// Without this, schedules drift 3h when Railway runs UTC.
+/// Computes next_run_at honoring the schedule's IANA timezone — without this,
+/// schedules drift 3h because Railway runs UTC.
 @Injectable()
 export class ScheduleClock {
   nextRunAtFromInput(input: {

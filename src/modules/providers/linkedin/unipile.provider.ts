@@ -10,7 +10,7 @@ import type {
   UnipileSendResult,
 } from './types';
 
-/// Unipile adapter — paridade com workflows §18.5.
+/// Unipile adapter — parity with N8N workflows §18.5.
 /// All endpoints under https://{UNIPILE_DSN}/api/v1/...
 @Injectable()
 export class UnipileProvider implements ILinkedInProvider {

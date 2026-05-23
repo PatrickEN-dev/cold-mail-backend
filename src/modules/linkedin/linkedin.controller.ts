@@ -14,7 +14,6 @@ import {
   type SendLinkedInMessageDto,
 } from './dto/linkedin.dto';
 
-/// Wave 7: replaces `estBS0PmeL1hFpDe` (send) + `8FaGelWVDKyoAS7r` (events).
 /// Multi-tenant fix for bug B13: derive account from the authenticated user,
 /// not a hardcoded attendee_id.
 @Controller('linkedin')

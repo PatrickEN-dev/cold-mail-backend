@@ -32,7 +32,6 @@ export class LeadsRepository {
     return lead && lead.userId === userId ? lead : null;
   }
 
-  /// Lookup latest lead sent to/from a given address for a tenant.
   findLatestByEmailForUser(email: string, userId: string): Promise<Email | null> {
     return this.prisma.email.findFirst({
       where: { userId, email },

@@ -10,8 +10,6 @@ import { ExternalServiceError, NotFoundError } from '@shared/errors/domain.error
 import type { DispatchSendJobData } from '../dto/dispatch.dto';
 import { PROVIDER_NAMES, type ProviderName, type SendEmailArgs } from '@modules/providers/email/types';
 
-/// Wave 4: runs one provider send. Persists the outbound message and updates
-/// the lead status. Emits domain events for downstream subscribers.
 @Injectable()
 export class SendOneUseCase {
   private readonly logger = new Logger(SendOneUseCase.name);

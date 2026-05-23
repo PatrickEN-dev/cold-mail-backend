@@ -28,7 +28,6 @@ import { randomUUID } from 'node:crypto';
                 },
             redact: {
               paths: [
-                // Request/response headers
                 'req.headers.authorization',
                 'req.headers.cookie',
                 'req.headers["x-api-key"]',
@@ -37,7 +36,6 @@ import { randomUUID } from 'node:crypto';
                 'req.headers["x-signature"]',
                 'req.headers["x-webhook-secret"]',
                 'res.headers["set-cookie"]',
-                // Common nested secret fields anywhere in the log payload
                 '*.password',
                 '*.token',
                 '*.apiKey',

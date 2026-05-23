@@ -12,10 +12,6 @@ import {
 } from '@shared/events/events';
 import type { NormalizedEmailEvent } from '../parsers/normalized-event';
 
-/// Wave 2: applies a NormalizedEmailEvent to the database.
-/// - inbound replies → email_messages + emails.status='replied' + reply_time
-/// - delivered → senders.today_usage++ (parity with N8N §18.2 sub-flow)
-/// - bounced / opened → emails.status update
 /// Idempotent on (provider_message_id, direction).
 @Injectable()
 export class IngestEmailEventUseCase {

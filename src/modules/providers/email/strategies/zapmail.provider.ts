@@ -4,9 +4,8 @@ import { TypedConfigService } from '@infra/config/typed-config.service';
 import { ExternalServiceError } from '@shared/errors/domain.error';
 import type { IEmailProvider, SendEmailArgs, SendEmailResult } from '../types';
 
-/// Zapmail strategy — paridade com pt2 §18.1 `Zapmail - Enviar Email`.
-/// POST https://api.zapmail.ai/api/v2/onebox/send-email
-/// Header: x-auth-zapmail
+/// Zapmail strategy — parity with N8N pt2 §18.1 `Zapmail - Enviar Email`.
+/// POST https://api.zapmail.ai/api/v2/onebox/send-email, header x-auth-zapmail.
 @Injectable()
 export class ZapmailEmailProvider implements IEmailProvider {
   readonly name = 'zapmail' as const;

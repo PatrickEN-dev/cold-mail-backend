@@ -4,7 +4,7 @@ import { TypedConfigService } from '@infra/config/typed-config.service';
 import { ExternalServiceError } from '@shared/errors/domain.error';
 import type { IEmailProvider, SendEmailArgs, SendEmailResult } from '../types';
 
-/// AWS SES — brief notes 0 senders today, kept dormant.
+/// AWS SES — 0 senders in prod today, kept dormant.
 @Injectable()
 export class SesEmailProvider implements IEmailProvider {
   readonly name = 'ses' as const;

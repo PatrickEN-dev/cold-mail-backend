@@ -6,15 +6,13 @@ import { JOB_NAMES, QUEUE_NAMES } from '@infra/queue/queue.constants';
 import { ValidationError } from '@shared/errors/domain.error';
 import type { DispatchBatchDto, DispatchSendJobData } from '../dto/dispatch.dto';
 
-/// Pacing window between sends from the same sender (paridade with N8N pt2
-/// `Wait1` 90-120s + `Wait2` 140-149s; we average to a uniform 90-150s).
+/// Pacing window between sends from the same sender — matches legacy N8N pt2
+/// (Wait1 90-120s + Wait2 140-149s) averaged to a uniform 90-150s.
 const PACING_MIN_MS = 90 * 1000;
 const PACING_MAX_MS = 150 * 1000;
 
-/// Wave 4 entry point: accepts the front payload (brief §6.2.1) and enqueues
-/// one BullMQ job per lead. Pacing is per-sender (delay grows linearly within
-/// each sender block) so that two senders can send in parallel but the same
-/// mailbox spaces out its requests.
+/// Pacing is per-sender (delay grows linearly within each sender block) so
+/// two senders can send in parallel but the same mailbox spaces its requests.
 @Injectable()
 export class SendBatchUseCase {
   private readonly logger = new Logger(SendBatchUseCase.name);
@@ -72,8 +70,6 @@ export class SendBatchUseCase {
     return diff > 0 ? diff : 0;
   }
 
-  /// Cumulative pacing for the Nth lead in a sender block.
-  /// Each gap is uniformly drawn from [PACING_MIN_MS, PACING_MAX_MS].
   private cumulativePacingDelayMs(index: number): number {
     let total = 0;
     for (let i = 0; i < index; i++) {

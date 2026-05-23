@@ -52,7 +52,6 @@ describe('SendBatchUseCase pacing', () => {
 
   beforeEach(() => {
     queue = makeQueue();
-    // bypass DI — we only need the queue dependency
     useCase = new SendBatchUseCase(queue.queue as unknown as never);
   });
 

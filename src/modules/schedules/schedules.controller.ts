@@ -60,7 +60,6 @@ export class SchedulesController {
     await this.service.delete(id, user.id);
   }
 
-  /// Wave 5: manual trigger — replaces app/api/schedules/trigger/ in Next.
   /// TODO(wave-5): enqueue dispatch.send via BullMQ producer once dispatch is wired.
   @Post(':id/trigger')
   @HttpCode(202)
